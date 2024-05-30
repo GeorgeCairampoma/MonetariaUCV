@@ -1,0 +1,246 @@
+CREATE TABLE usuarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario VARCHAR(50) NOT NULL,
+    contraseña VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE categorias (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL,
+    usuario_id INT,  
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+);
+
+CREATE TABLE registrogastos(
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombreproducto VARCHAR(100) NOT NULL,  
+    cantidad DECIMAL(10, 2) NOT NULL,
+    precio_unitario DECIMAL(10, 2) NOT NULL, 
+    fecha DATE NOT NULL,
+    categoria_id INT,  -- Usamos una columna para el ID de la categoría
+    usuario_id INT,
+    FOREIGN KEY (categoria_id) REFERENCES categorias(id),  
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+);
+
+CREATE TABLE ingresos_gastos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ingresos DECIMAL(10, 2) NOT NULL,
+    gastos DECIMAL(10, 2) NOT NULL,
+    usuario_id INT,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+);
+
+DELIMITER //
+
+CREATE PROCEDURE AutenticarUsuario(
+    IN p_usuario VARCHAR(50),
+    IN p_contraseña VARCHAR(50),
+    OUT p_autenticado BOOLEAN
+)
+BEGIN
+    DECLARE v_count INT;
+
+    SELECT COUNT(*) INTO v_count
+    FROM usuarios
+    WHERE usuario = p_usuario AND contraseña = p_contraseña;
+
+    IF v_count > 0 THEN
+        SET p_autenticado = TRUE;
+    ELSE
+        SET p_autenticado = FALSE;
+    END IF;
+END //
+
+CREATE PROCEDURE RegistrarUsuario(
+    IN p_usuario VARCHAR(50),
+    IN p_contraseña VARCHAR(50),
+    OUT p_registro_exitoso BOOLEAN
+)
+BEGIN
+    DECLARE v_user_count INT;
+
+    SELECT COUNT(*) INTO v_user_count
+    FROM usuarios
+    WHERE usuario = p_usuario;
+
+    IF v_user_count = 0 THEN
+        INSERT INTO usuarios (usuario, contraseña) VALUES (p_usuario, p_contraseña);
+        SET p_registro_exitoso = TRUE;
+    ELSE
+        SET p_registro_exitoso = FALSE;
+    END IF;
+END //
+
+CREATE PROCEDURE ObtenerIdUsuario(
+    IN p_nombreUsuario VARCHAR(50),
+    OUT p_idUsuario INT
+)
+BEGIN
+    SELECT id INTO p_idUsuario
+    FROM usuarios
+    WHERE usuario = p_nombreUsuario;
+END //
+
+CREATE PROCEDURE ObtenerNombreUsuario(
+    IN p_idUsuario INT,
+    OUT p_nombreUsuario VARCHAR(50)
+)
+BEGIN
+    SELECT usuario INTO p_nombreUsuario
+    FROM usuarios
+    WHERE id = p_idUsuario;
+END //
+
+CREATE PROCEDURE AgregarCategoria(
+    IN p_nombreCategoria VARCHAR(50),
+    IN p_usuarioID INT,
+    OUT p_operacion_exitosa BOOLEAN
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        SET p_operacion_exitosa = FALSE;
+    END;
+
+    INSERT INTO categorias (nombre, usuario_id) VALUES (p_nombreCategoria, p_usuarioID);
+    SET p_operacion_exitosa = TRUE;
+END //
+
+CREATE PROCEDURE ObtenerIdCategoriaPorNombre(
+    IN p_nombreCategoria VARCHAR(50),
+    IN p_usuarioID INT,
+    OUT p_idCategoria INT
+)
+BEGIN
+    SELECT id
+    INTO p_idCategoria
+    FROM categorias
+    WHERE nombre = p_nombreCategoria AND usuario_id = p_usuarioID
+    LIMIT 1;
+END //
+
+CREATE PROCEDURE ObtenerCategoriasPorUsuario(
+    IN p_idUsuario INT
+)
+BEGIN
+    SELECT nombre
+    FROM categorias
+    WHERE usuario_id = p_idUsuario;
+END //
+
+CREATE PROCEDURE GuardarIngresosGastos(
+    IN p_ingresos DECIMAL(10, 2),
+    IN p_gastos DECIMAL(10, 2),
+    IN p_idUsuario INT,
+    OUT p_operacion_exitosa BOOLEAN
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        SET p_operacion_exitosa = FALSE;
+    END;
+
+    INSERT INTO ingresos_gastos (ingresos, gastos, usuario_id) VALUES (p_ingresos, p_gastos, p_idUsuario);
+    SET p_operacion_exitosa = TRUE;
+END //
+
+CREATE PROCEDURE ModificarIngresosGastos(
+    IN p_id INT,
+    IN p_nuevosIngresos DECIMAL(10, 2),
+    IN p_nuevosGastos DECIMAL(10, 2),
+    IN p_idUsuario INT,
+    OUT p_operacion_exitosa BOOLEAN
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        SET p_operacion_exitosa = FALSE;
+    END;
+
+    UPDATE ingresos_gastos
+    SET ingresos = p_nuevosIngresos, gastos = p_nuevosGastos
+    WHERE id = p_id AND usuario_id = p_idUsuario;
+
+    SET p_operacion_exitosa = TRUE;
+END //
+
+CREATE PROCEDURE ObtenerIngresosYGastos(
+    IN p_idUsuario INT,
+    OUT p_ingresos DECIMAL(10, 2),
+    OUT p_gastos DECIMAL(10, 2)
+)
+BEGIN
+    SELECT ingresos, gastos INTO p_ingresos, p_gastos
+    FROM ingresos_gastos
+    WHERE usuario_id = p_idUsuario;
+END //
+
+CREATE PROCEDURE RegistrarGasto(
+    IN cantidad DOUBLE,
+    IN precio_unitario DOUBLE,
+    IN fecha DATE,
+    IN categoria_id INT,
+    IN usuario_id INT,
+    IN nombreproducto VARCHAR(255),
+    OUT success BOOLEAN
+)
+BEGIN
+    DECLARE affected_rows INT;
+    
+    INSERT INTO registrogastos (cantidad, precio_unitario, fecha, categoria_id, usuario_id, nombreproducto)
+    VALUES (cantidad, precio_unitario, fecha, categoria_id, usuario_id, nombreproducto);
+    
+    SET affected_rows = ROW_COUNT();
+    
+    IF affected_rows > 0 THEN
+        SET success = TRUE;
+    ELSE
+        SET success = FALSE;
+    END IF;
+    
+END //
+
+CREATE PROCEDURE ObtenerGastosPorUsuario(
+    IN usuario_id INT
+)
+BEGIN
+    SELECT rg.id, rg.cantidad, rg.precio_unitario, rg.fecha, c.nombre AS categoria, rg.usuario_id, rg.nombreproducto
+    FROM registrogastos rg
+    INNER JOIN categorias c ON rg.categoria_id = c.id
+    WHERE rg.usuario_id = usuario_id;
+END //
+
+CREATE PROCEDURE RecuperarGastos(
+    IN usuario_id INT
+)
+BEGIN
+    SELECT fecha, c.nombre AS categoria, cantidad, precio_unitario, nombreproducto
+    FROM registrogastos rg
+    INNER JOIN categorias c ON rg.categoria_id = c.id
+    WHERE rg.usuario_id = usuario_id;
+END //
+
+CREATE PROCEDURE EliminarCategoria(
+    IN p_idCategoria INT,
+    IN p_idUsuario INT,
+    OUT p_operacion_exitosa BOOLEAN
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        SET p_operacion_exitosa = FALSE;
+    END;
+    
+    -- Eliminar los registros de gastos asociados a la categoría
+    DELETE FROM registrogastos
+    WHERE categoria_id = p_idCategoria AND usuario_id = p_idUsuario;
+
+    -- Eliminar la categoría
+    DELETE FROM categorias
+    WHERE id = p_idCategoria AND usuario_id = p_idUsuario;
+
+    SET p_operacion_exitosa = TRUE;
+END //
+
+DELIMITER ;
